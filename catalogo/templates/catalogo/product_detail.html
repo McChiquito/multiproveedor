@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>{{ product }}</title></head>
+<body>
+  <p><a href="/productos/">← Volver</a></p>
+  <h1>{{ product.brand }} {{ product.name }}</h1>
+  <p>MPN: {{ product.mpn }} | GTIN: {{ product.gtin }} | Socket: {{ product.socket }}</p>
+  <p>{{ product.description }}</p>
+
+  <h2>Ofertas por proveedor</h2>
+  <table border="1" cellpadding="6">
+    <thead>
+      <tr><th>Proveedor</th><th>SKU proveedor</th><th>Precio</th><th>Moneda</th><th>Stock</th></tr>
+    </thead>
+    <tbody>
+      {% for o in offers %}
+      <tr>
+        <td>{{ o.supplier.name }}</td>
+        <td>{{ o.supplier_sku }}{% if o.mpn %}<br>MPN: {{ o.mpn }}{% endif %}{% if o.gtin %}<br>GTIN: {{ o.gtin }}{% endif %}</td>
+        <td>{{ o.price }}</td>
+        <td>{{ o.currency }}</td>
+        <td>{{ o.stock }}</td>
+      </tr>
+      {% empty %}
+        <tr><td colspan="5">Sin ofertas cargadas.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

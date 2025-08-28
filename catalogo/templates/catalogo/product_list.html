@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Productos</title></head>
+<body>
+  <p><a href="/admin/">Ir al admin</a> | <a href="/catalogo/importar/">Importar catálogo</a></p>
+  <form method="get">
+    <input name="q" value="{{ q }}" placeholder="Buscar...">
+    <button>Buscar</button>
+  </form>
+  <ul>
+    {% for p in products %}
+      <li>
+        <a href="{% url 'product_detail' slug=p.slug %}">{{ p.brand }} {{ p.name }}</a>
+        {% if p.mpn %} — MPN: {{ p.mpn }}{% endif %}{% if p.gtin %} — GTIN: {{ p.gtin }}{% endif %}
+      </li>
+    {% empty %}
+      <li>Sin resultados.</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
