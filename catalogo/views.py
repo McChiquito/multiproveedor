@@ -1,36 +1,65 @@
-import os
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import Product, SupplierProduct
-from .forms import UploadImportForm
-from .services.importers import import_for_supplier
+from django.db import transaction
+from django.shortcuts import render, redirect
+from django.utils import timezone
 
-def product_list(request):
-    q = request.GET.get("q","")
-    qs = Product.objects.all().order_by("brand","name")
-    if q: qs = qs.filter(name__icontains=q)
-    return render(request,"catalogo/product_list.html",{"products":qs,"q":q})
+from .forms import CatalogUploadForm
+from .models import Supplier, Product, ProductIdentifier, SupplierProduct
+from .utils.parsers import parse_catalog_xlsx
 
-def product_detail(request, slug):
-    p = get_object_or_404(Product, slug=slug)
-    offers = SupplierProduct.objects.filter(product=p).select_related("supplier").order_by("price")
-    return render(request,"catalogo/product_detail.html",{"product":p,"offers":offers})
-
-@staff_member_required
-def importar(request):
+@login_required
+@transaction.atomic
+def upload_catalog(request):
     if request.method == "POST":
-        form = UploadImportForm(request.POST, request.FILES)
+        form = CatalogUploadForm(request.POST, request.FILES)
         if form.is_valid():
-            supplier = form.cleaned_data["supplier"]
-            f = form.cleaned_data["file"]
-            import tempfile
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1]) as tmp:
-                for chunk in f.chunks(): tmp.write(chunk)
-                tmp_path = tmp.name
-            job = import_for_supplier(supplier, tmp_path)
-            messages.success(request, f"Importado: filas={job.processed_rows}, nuevos={job.created_products}, vínculos +={job.created_links}/{job.updated_links}")
-            return redirect("product_list")
+            supplier: Supplier = form.cleaned_data["supplier"]
+            file = request.FILES["file"].read()
+
+            rows = list(parse_catalog_xlsx(supplier.name, file))
+            updated, created, unmatched = 0, 0, []
+
+            # Mapa rápido: valor de identificador -> product_id
+            id_map = {pi.value: pi.product_id for pi in ProductIdentifier.objects.all()}
+            # Variante normalizada (mayúsculas y sin espacios)
+            id_map_norm = {k.upper().replace(" ", ""): v for k, v in id_map.items()}
+
+            for r in rows:
+                ident = r["identifier_value"].strip()
+                product_id = id_map.get(ident) or id_map_norm.get(ident.upper().replace(" ", ""))
+
+                if not product_id:
+                    unmatched.append(ident)
+                    continue
+
+                _, was_created = SupplierProduct.objects.update_or_create(
+                    supplier=supplier,
+                    identifier_value=ident,
+                    defaults={
+                        "product_id": product_id,
+                        "price": r["price"],
+                        "stock": r["stock"],
+                        "last_seen": timezone.now(),
+                    }
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+
+            messages.success(
+                request,
+                f"Catálogo procesado: {created} nuevos, {updated} actualizados, {len(unmatched)} sin coincidencia"
+            )
+            if unmatched:
+                messages.warning(
+                    request,
+                    "Sin coincidencia para: " + ", ".join(unmatched[:20]) + (" ..." if len(unmatched) > 20 else "")
+                )
+
+            return redirect("catalogo:upload")
     else:
-        form = UploadImportForm()
-    return render(request, "catalogo/importar.html", {"form": form})
+        form = CatalogUploadForm()
+
+    return render(request, "catalogo/upload.html", {"form": form})
