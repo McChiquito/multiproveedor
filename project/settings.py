@@ -4,6 +4,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'dev-secret-key'
 DEBUG = True
 ALLOWED_HOSTS = ['*']
+USD_MXN_RATE = 18.50
 
 INSTALLED_APPS = [
  'django.contrib.admin','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions',
